@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"image"
 	"image/color"
@@ -11,6 +12,7 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"path"
 	"reflect"
 	"strings"
 	"sync"
@@ -23,6 +25,7 @@ import (
 	"github.com/jrockway/opinionated-server/client"
 	"github.com/mdp/smallfont"
 	"go.uber.org/zap"
+	"golang.org/x/image/bmp"
 )
 
 type InfluxDBConfig struct {
@@ -157,8 +160,11 @@ func (d *Display) updateLastHourRelativeHumidity(ctx context.Context) error {
 }
 
 func (d *Display) updateOutdoorTemperature(ctx context.Context) error {
-	fmt.Println(time.Since(d.MesonetLastData).String())
-	if time.Since(d.MesonetLastData) < 5*time.Minute {
+	d.RLock()
+	lastPoint := d.MesonetLastData
+	d.RUnlock()
+	zap.L().Debug("last mesonet data point", zap.Time("last_point", lastPoint))
+	if time.Since(lastPoint) < 6*time.Minute {
 		// Be nicer to the mesonet server, since they don't get data more frequently than
 		// this.
 		return nil
@@ -309,7 +315,9 @@ func (d *Display) UpdateOnce(ctx context.Context) error {
 	if err := d.update(ctx); err != nil {
 		return fmt.Errorf("update: %w", err)
 	}
-	d.render()
+	if err := d.render(); err != nil {
+		return fmt.Errorf("render: %w", err)
+	}
 	return nil
 }
 
@@ -326,7 +334,10 @@ func (d *Display) ServeJSON(w http.ResponseWriter, req *http.Request) {
 	d.RUnlock()
 	w.Header().Set("content-type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(&disp)
+	if err := json.NewEncoder(w).Encode(&disp); err != nil {
+		l := ctxzap.Extract(req.Context())
+		l.Info("error sending json to client", zap.Error(err))
+	}
 }
 
 func (d *Display) enlargedImage(enlarge, space int) *image.RGBA {
@@ -361,24 +372,51 @@ func (d *Display) ServeLargePNG(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func (d *Display) ServePNG(w http.ResponseWriter, req *http.Request) {
+func (d *Display) ServeImage(w http.ResponseWriter, req *http.Request) {
 	ctx := req.Context()
+
+	encoder := png.Encode
+	ct := "image/png"
+	switch path.Ext(req.URL.Path) {
+	case ".bmp":
+		encoder = bmp.Encode
+		ct = "image/bmp"
+	case ".txt":
+		encoder = func(w io.Writer, m image.Image) error {
+			for x := m.Bounds().Min.X; x < m.Bounds().Max.X; x++ {
+				for y := m.Bounds().Min.Y; y < m.Bounds().Max.Y; y++ {
+					r, g, b, _ := m.At(x, y).RGBA()
+					if r != 0 || g != 0 || b != 0 {
+						if _, err := w.Write([]byte(fmt.Sprintf("%v %v\n", x, y))); err != nil {
+							return fmt.Errorf("at %v, %v: %v", x, y, err)
+						}
+					}
+				}
+			}
+			return nil
+		}
+		ct = "text/plain"
+	}
+
 	buf := new(bytes.Buffer)
 	if err := func() error {
 		d.Lock()
 		defer d.Unlock()
-		return png.Encode(buf, d.image)
+		if d.image == nil {
+			return errors.New("image has not been rendered yet")
+		}
+		return encoder(buf, d.image)
 	}(); err != nil {
 		l := ctxzap.Extract(ctx)
-		l.Error("problem encoding png", zap.Error(err))
+		l.Error("problem encoding image", zap.Error(err))
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	w.Header().Add("content-type", "image/png")
+	w.Header().Add("content-type", ct)
 	w.WriteHeader(http.StatusOK)
 	if _, err := io.Copy(w, buf); err != nil {
 		l := ctxzap.Extract(ctx)
-		l.Error("problem copying png to client", zap.Error(err))
+		l.Error("problem copying image to client", zap.Error(err))
 	}
 }

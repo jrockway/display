@@ -23,7 +23,9 @@ func main() {
 	mux := http.NewServeMux()
 	server.SetHTTPHandler(mux)
 	mux.HandleFunc("/index.json", display.ServeJSON)
-	mux.HandleFunc("/index.png", display.ServePNG)
+	mux.HandleFunc("/index.png", display.ServeImage)
+	mux.HandleFunc("/index.bmp", display.ServeImage)
+	mux.HandleFunc("/index.txt", display.ServeImage)
 	mux.HandleFunc("/large.png", display.ServeLargePNG)
 	go func() {
 		interval := 10 * time.Second
