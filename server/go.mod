@@ -8,7 +8,7 @@ require (
 	github.com/jrockway/opinionated-server v0.0.21
 	github.com/mdp/smallfont v0.0.0-20170214162526-e711b0a1327b
 	go.uber.org/zap v1.15.0
-	golang.org/x/image v0.0.0-20210628002857-a66eb6448b8d
+	golang.org/x/image v0.5.0
 )
 
 require (
@@ -35,9 +35,9 @@ require (
 	go.uber.org/atomic v1.6.0 // indirect
 	go.uber.org/automaxprocs v1.3.0 // indirect
 	go.uber.org/multierr v1.5.0 // indirect
-	golang.org/x/net v0.0.0-20210119194325-5f4716e94777 // indirect
-	golang.org/x/sys v0.0.0-20210124154548-22da62e12c0c // indirect
-	golang.org/x/text v0.3.6 // indirect
+	golang.org/x/net v0.0.0-20220722155237-a158d28d115b // indirect
+	golang.org/x/sys v0.0.0-20220722155257-8c9f86f7a55f // indirect
+	golang.org/x/text v0.7.0 // indirect
 	google.golang.org/genproto v0.0.0-20190819201941-24fa4b261c55 // indirect
 	google.golang.org/grpc v1.30.0 // indirect
 	google.golang.org/protobuf v1.23.0 // indirect
